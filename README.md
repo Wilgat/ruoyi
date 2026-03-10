@@ -23,7 +23,6 @@ Ideal for developers, students, or quick demos who want to get RuoYi running in 
 - **Zero manual configuration** for basic Java + Maven + RuoYi setup
 - Supports **Java 21** (updated from original RuoYi's Java 17 requirement)
 - Optional **MySQL auto-install + DB setup** (run as root with `ruoyi mysql`)
-- Cleans up unused modules (generator, quartz, etc.) for a minimal footprint
 - Colorful progress output & error handling
 - Self-installing & self-updating via GitHub raw URL
 
