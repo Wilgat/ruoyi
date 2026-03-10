@@ -1,6 +1,6 @@
 # ruoyi - One-Command Installer & Launcher for RuoYi Framework
 
-<img src="https://img.shields.io/badge/Version-1.0.4-blue?style=flat-square" alt="Version">  
+<img src="https://img.shields.io/badge/Version-1.0.5-blue?style=flat-square" alt="Version">  
 <img src="https://img.shields.io/badge/Java-21-orange?style=flat-square&logo=openjdk" alt="Java 21">  
 <img src="https://img.shields.io/badge/Spring%20Boot-3.3.5-brightgreen?style=flat-square&logo=springboot" alt="Spring Boot 3.3">  
 <img src="https://img.shields.io/badge/Maven-3.9.9-red?style=flat-square&logo=apachemaven" alt="Maven 3.9">  
@@ -11,9 +11,9 @@
 With one command you can:
 
 - Install the script itself (if not already present)
-- Install & configure **SDKMAN!** → **Java 21 (Temurin)** → **Maven 3.9.13**
-- Clone the latest RuoYi repository
-- (Optional – root only) Install MySQL, create database/user, run initialization SQL
+- Set up the full development environment (SDKMAN! → Java 21 → Maven)
+- Clone the official RuoYi repository
+- (Optional – root only) Install MySQL, create database/user, and import initialization SQL
 - Build and start the RuoYi backend server
 
 Ideal for developers, students, or quick demos who want to get RuoYi running in minutes.
@@ -21,15 +21,15 @@ Ideal for developers, students, or quick demos who want to get RuoYi running in 
 ## Features
 
 - **Zero manual configuration** for basic Java + Maven + RuoYi setup
-- Supports **Java 21** (updated from original RuoYi's Java 17 requirement)
+- Uses **Java 21 (Temurin)** — updated from original RuoYi's Java 17
 - Optional **MySQL auto-install + DB setup** (run as root with `ruoyi mysql`)
-- Colorful progress output & error handling
+- Clean error handling and colorful progress output
 - Self-installing & self-updating via GitHub raw URL
 
 ## Requirements
 
 - Linux / macOS (Ubuntu/Debian/CentOS tested)
-- `curl`, `git`, `sed`, `mysql` client (for DB mode)
+- `curl`, `git`, `sed`
 - Internet connection
 - Root/sudo access **only** if you want automatic MySQL installation
 
@@ -61,10 +61,10 @@ sudo ruoyi mysql
 This will:
 - Install MySQL server
 - Run `mysql_secure_installation`
-- Prompt for root password, new DB user & password
+- Prompt for root password, DB name/user/password
 - Create database `ry`
-- Grant privileges
-- Import `ry_20250416.sql` (or latest init script)
+- Import SQL initialization script
+- Update database config in `application-druid.yml`
 
 Then run normal start:
 
@@ -72,7 +72,7 @@ Then run normal start:
 ruoyi
 ```
 
-### 3. Update the script itself (when you push new version)
+### 3. Update the script itself
 
 Just re-run the curl command — it will overwrite the old version.
 
@@ -85,6 +85,41 @@ ruoyi help          # Show this help
 ruoyi version       # Show version
 ```
 
+## Dependency Sequence of Tasks
+
+The script follows this strict order to ensure each step has what it needs before proceeding:
+
+1. **Install self**  
+   Checks if the `ruoyi` command is already installed → if not, downloads and installs itself to `~/.local/bin` or `/usr/local/bin`
+
+2. **Install SDKMAN!**  
+   Downloads and installs SDKMAN! (tool manager for Java & Maven) → loads it in the current session
+
+3. **Install Java 21 (Temurin)**  
+   Uses SDKMAN! to install and set as default Java 21 (Eclipse Temurin distribution)
+
+4. **Install Maven 3.9.13**  
+   Uses SDKMAN! to install and set as default Maven
+
+5. **Clone the RuoYi project**  
+   Removes any old `~/ruoyi` folder → clones fresh copy from https://github.com/yangzongzhuan/RuoYi.git
+
+6. **Build**  
+   Updates `<java.version>` to 21 in `pom.xml` → runs `mvn clean package -Dmaven.test.skip=true` → starts the server with `java -jar ruoyi-admin/target/ruoyi-admin.jar`
+
+7. **MySQL + Database setup** (only if run with `mysql` argument as root/sudo)  
+   - Installs MySQL server  
+   - Runs security setup  
+   - Prompts for root password, DB name/user/password  
+   - Creates database & user  
+   - Imports latest `ry_*.sql` script  
+   - Updates `ruoyi-admin/src/main/resources/application-druid.yml`
+
+This order ensures:
+- Tools are ready before cloning or building
+- No wasted time cloning if environment setup fails
+- Safe to re-run multiple times
+
 ## Project Structure After Setup
 
 ```
@@ -92,19 +127,18 @@ ruoyi version       # Show version
 ├── ruoyi-admin/           # Main backend module (runs on port 8080)
 ├── ruoyi-common/
 ├── ruoyi-framework/
-├── ruoyi-quartz/          # Removed in minimal mode
-├── ruoyi-generator/       # Removed in minimal mode
+├── ruoyi-system/
+├── ruoyi-quartz/          # Included (scheduler)
+├── ruoyi-generator/       # Included (code generator)
 ├── sql/                   # SQL init scripts
 └── pom.xml
 ```
 
 ## Important Notes
 
-- The script modifies `<java.version>` to **21** in the root `pom.xml`
-- Some optional modules (code generator, scheduler) are removed to keep startup fast
-- If you need those modules back → comment out the `rm -rf` lines in the script
-- Database configuration is written to `ruoyi-admin/src/main/resources/application-druid.yml`
+- The script automatically sets Java version to **21** in `pom.xml`
 - Default port: **8080** (change via `application.yml` if needed)
+- Database config is updated automatically only in `mysql` mode
 
 ## Troubleshooting
 
