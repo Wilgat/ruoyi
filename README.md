@@ -1,5 +1,11 @@
 # ruoyi - One-Command Installer & Launcher for RuoYi Framework
 
+<img src="https://img.shields.io/badge/Version-1.0.2-blue?style=flat-square" alt="Version">  
+<img src="https://img.shields.io/badge/Java-21-orange?style=flat-square&logo=openjdk" alt="Java 21">  
+<img src="https://img.shields.io/badge/Spring%20Boot-3.3.5-brightgreen?style=flat-square&logo=springboot" alt="Spring Boot 3.3">  
+<img src="https://img.shields.io/badge/Maven-3.9.9-red?style=flat-square&logo=apachemaven" alt="Maven 3.9">  
+<img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License">
+
 **ruoyi** is a simple shell script that automates the entire setup process for the popular **RuoYi** open-source admin backend framework (https://github.com/yangzongzhuan/RuoYi).
 
 With one command you can:
