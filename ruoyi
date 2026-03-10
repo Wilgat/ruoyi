@@ -1,0 +1,417 @@
+#!/bin/sh
+
+# ────────────────────────────────────────────────
+#  ruoyi – version 1.0.0
+#  One-command installer + launcher for RuoYi admin framework
+#    • Installs itself if not present
+#    • Installs SDKMAN! if missing
+#    • Installs Java 21 (Temurin)
+#    • Installs Maven 3.9.13
+#    • Clones RuoYi project from GitHub
+#    • Configures and runs minimal RuoYi setup
+#    • If run as root/sudo with 'mysql' param: installs MySQL, prompts for config, sets up DB
+# ────────────────────────────────────────────────
+
+VERSION="1.0.0"
+APP=ruoyi
+GITUSER=Wilgat
+JAVA_MAIN_VER=21
+JAVA_BRAND=Temurin
+JAVA_ID=$JAVA_MAIN_VER-tem
+MAVEN_VER=3.9.13
+ARTIFACT_ID=ruoyi
+ARTIFACT_VER=1.0.0
+SPRINGBOOT_VER=4.0.3  # From RuoYi POM
+PORT=8080
+BIND_IP=0.0.0.0
+GIT_REPO="https://github.com/yangzongzhuan/RuoYi.git"
+PROJECT_DIR="$HOME/$APP"
+DB_NAME="ry"
+DB_USER="ruoyi"
+SQL_SCRIPT="sql/ry_20250416.sql"  # Main init script from repo
+
+# Colors
+if [ -t 1 ]; then
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    RED='\033[0;31m'
+    NC='\033[0m'
+else
+    GREEN='' YELLOW='' RED='' NC=''
+fi
+
+# ────────────────────────────────────────────────
+# Installation path logic
+# ────────────────────────────────────────────────
+
+if [ "$(id -u)" -eq 0 ]; then
+    INSTALL_DIR="/usr/local/bin"
+    INSTALL_PATH="$INSTALL_DIR/$APP"
+    NEEDS_SUDO=false
+else
+    INSTALL_DIR="${HOME}/.local/bin"
+    INSTALL_PATH="$INSTALL_DIR/$APP"
+    NEEDS_SUDO=true
+fi
+
+# ────────────────────────────────────────────────
+# Helpers
+# ────────────────────────────────────────────────
+
+is_installed() {
+    [ -f "$INSTALL_PATH" ] && [ -x "$INSTALL_PATH" ]
+}
+
+in_path() {
+    case ":${PATH}:" in
+        *:"${INSTALL_DIR}":*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+add_to_bashrc() {
+    local bashrc="${HOME}/.bashrc"
+    local line="export PATH=\"\$HOME/.local/bin:\$PATH\""
+
+    if [ -f "$bashrc" ] && grep -qF "$line" "$bashrc" 2>/dev/null; then
+        return
+    fi
+
+    echo "" >> "$bashrc"
+    echo "# Added by $APP installer" >> "$bashrc"
+    echo "$line" >> "$bashrc"
+    echo "${YELLOW}→ Added ~/.local/bin to PATH in ~/.bashrc${NC}"
+}
+
+# ────────────────────────────────────────────────
+# Self-install logic – continues after install
+# ────────────────────────────────────────────────
+
+install_self() {
+    echo ""
+    echo "${YELLOW}$APP not found → installing...${NC}"
+    echo ""
+
+    if $NEEDS_SUDO; then
+        echo "Recommended install command (use bash explicitly):"
+        echo "  ${GREEN}sudo curl -fsSL $GIT_REPO/raw/master/$APP | sudo bash${NC}"
+    else
+        echo "Recommended install command (use bash explicitly):"
+        echo "  ${GREEN}curl -fsSL $GIT_REPO/raw/master/$APP | bash${NC}"
+    fi
+
+    echo ""
+
+    mkdir -p "$INSTALL_DIR" 2>/dev/null || {
+        echo "${RED}Cannot create directory $INSTALL_DIR${NC}" >&2
+        exit 1
+    }
+
+    TMP_SCRIPT="/tmp/$APP_$$.sh"
+    if ! curl -fsSL "$GIT_REPO/raw/master/$APP" -o "$TMP_SCRIPT"; then
+        echo "${RED}Failed to download installer${NC}" >&2
+        rm -f "$TMP_SCRIPT" 2>/dev/null
+        exit 1
+    fi
+
+    chmod 755 "$TMP_SCRIPT" || {
+        echo "${RED}chmod failed${NC}" >&2
+        rm -f "$TMP_SCRIPT"
+        exit 1
+    }
+
+    if cp "$TMP_SCRIPT" "$INSTALL_PATH" 2>/dev/null; then
+        echo "${GREEN}Installed to $INSTALL_PATH${NC}"
+        rm -f "$TMP_SCRIPT"
+        
+        if ! $NEEDS_SUDO && ! in_path; then
+            add_to_bashrc
+            echo ""
+            echo "${YELLOW}→ ~/.local/bin was added to ~/.bashrc${NC}"
+            echo "  To use '$APP' immediately in this session run:"
+            echo "    ${GREEN}. ~/.bashrc${NC}"
+            echo "  (or open a new terminal)"
+            echo "  Continuing in current session anyway..."
+        fi
+
+        echo "${GREEN}Proceeding to setup SDKMAN + Java $JAVA_MAIN_VER + Maven + RuoYi demo...${NC}"
+        echo ""
+    else
+        echo "${RED}Failed to install to $INSTALL_PATH${NC}" >&2
+        echo "  Permission denied? Try with sudo."
+        rm -f "$TMP_SCRIPT"
+        exit 1
+    fi
+}
+
+# ────────────────────────────────────────────────
+# Help
+# ────────────────────────────────────────────────
+
+show_help() {
+    cat << 'EOF'
+$APP – version $VERSION
+
+One-command RuoYi framework setup
+
+Usage:
+  $APP               Setup tools (if needed) + clone + build + run RuoYi
+  $APP mysql         (as root/sudo) Install MySQL + config DB for RuoYi
+  $APP help          Show this help
+  $APP version       Show version
+
+What it does:
+  • Installs itself to ~/.local/bin or /usr/local/bin if missing
+  • Installs SDKMAN! (if not present)
+  • Installs Java 21 (Temurin)
+  • Installs Maven 3.9.13
+  • Clones RuoYi from GitHub to ~/$APP
+  • Builds & runs it (http://localhost:$PORT)
+
+Note: First time SDKMAN is installed, you may need to run
+      . "$HOME/.sdkman/bin/sdkman-init.sh"  or open new terminal
+      before 'sdk' command becomes available in current session.
+
+EOF
+}
+
+# ────────────────────────────────────────────────
+# Argument parsing
+# ────────────────────────────────────────────────
+
+COMMAND="run"
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        version) COMMAND="version"; shift ;;
+        help)    COMMAND="help";    shift ;;
+        mysql)   COMMAND="mysql";   shift ;;
+        *)       echo "${RED}Unknown argument: $1${NC}" >&2
+                 echo "Try: $APP help"
+                 exit 1 ;;
+    esac
+done
+
+# ────────────────────────────────────────────────
+# Install if missing → then continue anyway
+# ────────────────────────────────────────────────
+
+if ! is_installed; then
+    install_self
+fi
+
+# ────────────────────────────────────────────────
+# Execute requested command
+# ────────────────────────────────────────────────
+
+case "$COMMAND" in
+    version)
+        echo "$APP version $VERSION"
+        exit 0
+        ;;
+
+    help)
+        show_help
+        exit 0
+        ;;
+
+    run) : ;;  # continue to setup & run
+    mysql)
+        if [ "$(id -u)" -ne 0 ]; then
+            echo "${RED}Must run as root/sudo for 'mysql' param${NC}" >&2
+            exit 1
+        fi
+        ;;
+    *)
+        echo "${RED}Invalid command${NC}" >&2
+        exit 1
+        ;;
+esac
+
+# ────────────────────────────────────────────────
+# Main payload: SDKMAN + Java 21 + Maven + RuoYi clone/build/run
+# ────────────────────────────────────────────────
+
+echo ""
+echo "=============================================================="
+echo "  $APP  –  SDKMAN + Java 21 + Maven + RuoYi setup"
+echo "=============================================================="
+echo ""
+
+# 1. SDKMAN
+echo "→ Checking SDKMAN..."
+if [ -d "$HOME/.sdkman" ] && command -v sdk >/dev/null 2>&1; then
+    echo "   Already installed."
+else
+    echo "   Installing SDKMAN..."
+    curl -s "https://get.sdkman.io" | bash
+    [ $? -ne 0 ] && { echo "${RED}SDKMAN install failed${NC}"; exit 1; }
+
+    echo "   Loading SDKMAN in current session..."
+    if [ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]; then
+        . "$HOME/.sdkman/bin/sdkman-init.sh"
+    else
+        echo "${YELLOW}Warning: sdkman-init.sh not found${NC}"
+    fi
+fi
+
+if ! command -v sdk >/dev/null 2>&1; then
+    echo ""
+    echo "${YELLOW}sdk command is still not available in this session.${NC}"
+    echo "This is normal on first SDKMAN install."
+    echo ""
+    echo "Please run one of these, then re-execute '$APP':"
+    echo "  ${GREEN}. \"\$HOME/.sdkman/bin/sdkman-init.sh\"${NC}"
+    echo "  ${GREEN}. ~/.bashrc${NC}"
+    echo "  or open a new terminal / tab"
+    echo ""
+    exit 1
+fi
+
+echo "   SDKMAN ready."
+sdk version | head -n 1
+
+# 2. Java 21 (Temurin)
+echo ""
+echo "→ Installing Java 21 ($JAVA_BRAND)..."
+
+sdk install java $JAVA_ID </dev/null || {
+    echo "${RED}Failed to install Java 21 $JAVA_BRAND${NC}"
+    echo "Run 'sdk list java' to see available versions"
+    exit 1
+}
+
+sdk default java $JAVA_ID >/dev/null 2>&1
+sdk use   java $JAVA_ID >/dev/null 2>&1 || true
+
+# Prefer SDKMAN java
+JAVA_CMD="$(sdk home java current)/bin/java"
+if [ -x "$JAVA_CMD" ]; then
+    "$JAVA_CMD" -version 2>&1 | head -n 1 || {
+        echo "${RED}java command not found after install${NC}"
+        exit 1
+    }
+else
+    java -version 2>&1 | head -n 1 || {
+        echo "${RED}java command not found after install${NC}"
+        exit 1
+    }
+fi
+
+# 3. Maven 3.9.13
+echo ""
+echo "→ Installing Maven $MAVEN_VER..."
+
+sdk install maven $MAVEN_VER </dev/null || {
+    echo "${RED}Failed to install Maven $MAVEN_VER${NC}"
+    exit 1
+}
+
+sdk default maven $MAVEN_VER >/dev/null 2>&1
+sdk use   maven $MAVEN_VER >/dev/null 2>&1 || true
+
+mvn --version | head -n 3 || {
+    echo "${RED}mvn command not found${NC}"
+    exit 1
+}
+
+# 4. MySQL install + config if 'mysql' param
+if [ "$COMMAND" = "mysql" ]; then
+    echo ""
+    echo "→ Installing MySQL (assuming Ubuntu/Debian)..."
+    apt-get update -y
+    apt-get install mysql-server -y
+    [ $? -ne 0 ] && { echo "${RED}MySQL install failed${NC}"; exit 1; }
+
+    echo "→ Securing MySQL installation (interactive)..."
+    mysql_secure_installation
+
+    echo ""
+    echo "→ Prompting for RuoYi DB configuration..."
+    read -p "Enter MySQL root password (to create DB/user): " mysql_root_pass
+    read -p "Enter RuoYi DB username (default: ruoyi): " db_user
+    db_user=${db_user:-ruoyi}
+    read -s -p "Enter RuoYi DB password: " db_pass
+    echo ""
+
+    echo "→ Creating DB '$DB_NAME' and user '$db_user'..."
+    mysql -u root -p"$mysql_root_pass" -e "CREATE DATABASE IF NOT EXISTS $DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
+    mysql -u root -p"$mysql_root_pass" -e "CREATE USER IF NOT EXISTS '$db_user'@'localhost' IDENTIFIED BY '$db_pass';"
+    mysql -u root -p"$mysql_root_pass" -e "GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$db_user'@'localhost';"
+    mysql -u root -p"$mysql_root_pass" -e "FLUSH PRIVILEGES;"
+    [ $? -ne 0 ] && { echo "${RED}DB creation failed${NC}"; exit 1; }
+fi
+
+# 5. Clone RuoYi project
+echo ""
+echo "→ Cloning RuoYi project from GitHub..."
+if [ -d "$PROJECT_DIR" ]; then
+    echo "   Removing previous project folder..."
+    rm -rf "$PROJECT_DIR"
+fi
+
+git clone "$GIT_REPO" "$PROJECT_DIR" || {
+    echo "${RED}Git clone failed${NC}"
+    exit 1
+}
+
+cd "$PROJECT_DIR" || exit 1
+
+# Update Java version in POM to 21 (original is 17)
+sed -i "s/<java.version>17<\/java.version>/<java.version>21<\/java.version>/g" pom.xml
+
+# If 'mysql' param and configs set, update application-druid.yml
+if [ "$COMMAND" = "mysql" ]; then
+    CONFIG_FILE="ruoyi-admin/src/main/resources/application-druid.yml"
+    if [ -f "$CONFIG_FILE" ]; then
+        sed -i "s/url: jdbc:mysql:\/\/localhost:3306\/ry/url: jdbc:mysql:\/\/localhost:3306\/$DB_NAME/g" "$CONFIG_FILE"
+        sed -i "s/username: root/username: $db_user/g" "$CONFIG_FILE"
+        sed -i "s/password: password/password: $db_pass/g" "$CONFIG_FILE"
+        echo "   Updated DB config in $CONFIG_FILE"
+    else
+        echo "${YELLOW}Warning: $CONFIG_FILE not found – skipping config update${NC}"
+    fi
+
+    # Run SQL init if script exists
+    if [ -f "$SQL_SCRIPT" ]; then
+        echo "→ Initializing DB with $SQL_SCRIPT..."
+        mysql -u root -p"$mysql_root_pass" $DB_NAME < "$SQL_SCRIPT" || {
+            echo "${RED}SQL init failed${NC}"
+            exit 1
+        }
+    else
+        echo "${YELLOW}Warning: SQL script $SQL_SCRIPT not found – skipping DB init${NC}"
+    fi
+fi
+
+# Remove unused modules/paths (minimal setup: keep core, remove generator/quartz/etc.)
+echo "→ Removing unused modules for minimal setup..."
+rm -rf ruoyi-generator ruoyi-quartz ruoyi-job ruoyi-system/src/main/java/com/ruoyi/system/domain/test*  # Example removals – adjust as needed
+
+# 6. Build
+echo ""
+echo "→ Building RuoYi project..."
+
+mvn clean package -Dmaven.test.skip=true || {
+    echo "${RED}Build failed${NC}"
+    echo "You can try: cd $PROJECT_DIR && mvn clean package -Dmaven.test.skip=true"
+    exit 1
+}
+
+# 7. Run
+echo ""
+echo "=============================================================="
+echo "  RuoYi app is starting..."
+echo "  → Open: http://localhost:$PORT"
+echo "  → Press Ctrl+C to stop"
+echo "=============================================================="
+echo ""
+
+java -jar ruoyi-admin/target/ruoyi-admin.jar
+
+# Prefer SDKMAN java
+if [ -x "$JAVA_CMD" ]; then
+    "$JAVA_CMD" -jar ruoyi-admin/target/ruoyi-admin.jar
+else
+    java -jar ruoyi-admin/target/ruoyi-admin.jar
+fi
