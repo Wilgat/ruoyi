@@ -1,7 +1,7 @@
-#!/bin/sh
+#!/bin/bash
 
 # ────────────────────────────────────────────────
-#  ruoyi – version 1.0.5
+#  ruoyi – version 1.0.6
 #  One-command installer + launcher for RuoYi admin framework
 #    • Installs itself if not present
 #    • Installs SDKMAN! → Java 21 (Temurin) → Maven 3.9.13
@@ -10,7 +10,7 @@
 #    • If run as root/sudo with 'mysql': installs MySQL, prompts for DB config, imports SQL
 # ────────────────────────────────────────────────
 
-VERSION="1.0.5"
+VERSION="1.0.6"
 APP=ruoyi
 GITUSER=Wilgat
 JAVA_MAIN_VER=21
