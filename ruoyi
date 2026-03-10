@@ -24,7 +24,8 @@ ARTIFACT_VER=1.0.0
 SPRINGBOOT_VER=4.0.3  # From RuoYi POM
 PORT=8080
 BIND_IP=0.0.0.0
-GIT_REPO="https://github.com/yangzongzhuan/RuoYi.git"
+GITUSERCONTENT=https://raw.githubusercontent.com/$GITUSER/$APP/main/$APP
+GIT_REPO="https://github.com/Wilgat/RuoYi.git"
 PROJECT_DIR="$HOME/$APP"
 DB_NAME="ry"
 DB_USER="ruoyi"
@@ -94,10 +95,10 @@ install_self() {
 
     if $NEEDS_SUDO; then
         echo "Recommended install command (use bash explicitly):"
-        echo "  ${GREEN}sudo curl -fsSL $GIT_REPO/raw/master/$APP | sudo bash${NC}"
+        echo "  ${GREEN}sudo curl -fsSL $GITUSERCONTENT | sudo bash${NC}"
     else
         echo "Recommended install command (use bash explicitly):"
-        echo "  ${GREEN}curl -fsSL $GIT_REPO/raw/master/$APP | bash${NC}"
+        echo "  ${GREEN}curl -fsSL $GITUSERCONTENT | bash${NC}"
     fi
 
     echo ""
@@ -108,7 +109,7 @@ install_self() {
     }
 
     TMP_SCRIPT="/tmp/$APP_$$.sh"
-    if ! curl -fsSL "$GIT_REPO/raw/master/$APP" -o "$TMP_SCRIPT"; then
+    if ! curl -fsSL "$GITUSERCONTENT" -o "$TMP_SCRIPT"; then
         echo "${RED}Failed to download installer${NC}" >&2
         rm -f "$TMP_SCRIPT" 2>/dev/null
         exit 1
