@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # ────────────────────────────────────────────────
-#  ruoyi – version 1.0.3
+#  ruoyi – version 1.0.4
 #  One-command installer + launcher for RuoYi admin framework
 #    • Installs itself if not present
 #    • Installs SDKMAN! if missing
@@ -11,7 +11,7 @@
 #    • Optional MySQL + DB setup (sudo ruoyi mysql)
 # ────────────────────────────────────────────────
 
-VERSION="1.0.3"
+VERSION="1.0.4"
 APP=ruoyi
 GITUSER=Wilgat
 JAVA_MAIN_VER=21
@@ -37,7 +37,7 @@ else
 fi
 
 # ────────────────────────────────────────────────
-# Installation path logic (unchanged)
+# Installation path logic
 # ────────────────────────────────────────────────
 
 if [ "$(id -u)" -eq 0 ]; then
@@ -51,7 +51,7 @@ else
 fi
 
 # ────────────────────────────────────────────────
-# Helpers (unchanged)
+# Helpers
 # ────────────────────────────────────────────────
 
 is_installed() {
@@ -80,7 +80,7 @@ add_to_bashrc() {
 }
 
 # ────────────────────────────────────────────────
-# Self-install logic (unchanged)
+# Self-install logic
 # ────────────────────────────────────────────────
 
 install_self() {
@@ -141,7 +141,7 @@ install_self() {
 }
 
 # ────────────────────────────────────────────────
-# Help (unchanged)
+# Help
 # ────────────────────────────────────────────────
 
 show_help() {
@@ -160,7 +160,7 @@ EOF
 }
 
 # ────────────────────────────────────────────────
-# Argument parsing (unchanged)
+# Argument parsing
 # ────────────────────────────────────────────────
 
 COMMAND="run"
@@ -245,63 +245,85 @@ mvn --version | head -n 3 || { echo "${RED}mvn not found${NC}"; exit 1; }
 # MySQL mode (if requested)
 if [ "$COMMAND" = "mysql" ]; then
     echo "→ Installing MySQL (Ubuntu/Debian assumed)..."
-    apt-get update -y && apt-get install -y mysql-server || exit 1
+    apt-get update -y && apt-get install -y mysql-server || { echo "${RED}MySQL install failed${NC}"; exit 1; }
     mysql_secure_installation
 
     echo "→ RuoYi DB setup"
     read -p "MySQL root password: " mysql_root_pass
-    read -p "DB name [ry]: " db_name; DB_NAME=${db_name:-ry}
-    read -p "DB user [ruoyi]: " db_user; DB_USER=${db_user:-ruoyi}
-    read -s -p "DB password: " db_pass; echo ""
+    read -p "DB name [ry]: " db_name_input
+    DB_NAME=${db_name_input:-ry}
+    read -p "DB user [ruoyi]: " db_user_input
+    DB_USER=${db_user_input:-ruoyi}
+    read -s -p "DB password: " db_pass
+    echo ""
 
-    mysql -u root -p"$mysql_root_pass" -e "CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
-    mysql -u root -p"$mysql_root_pass" -e "CREATE USER IF NOT EXISTS '$DB_USER'@'localhost' IDENTIFIED BY '$db_pass';"
-    mysql -u root -p"$mysql_root_pass" -e "GRANT ALL ON \`$DB_NAME\`.* TO '$DB_USER'@'localhost'; FLUSH PRIVILEGES;"
+    mysql -u root -p"$mysql_root_pass" -e "CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;" || exit 1
+    mysql -u root -p"$mysql_root_pass" -e "CREATE USER IF NOT EXISTS '$DB_USER'@'localhost' IDENTIFIED BY '$db_pass';" || exit 1
+    mysql -u root -p"$mysql_root_pass" -e "GRANT ALL PRIVILEGES ON \`$DB_NAME\`.* TO '$DB_USER'@'localhost';" || exit 1
+    mysql -u root -p"$mysql_root_pass" -e "FLUSH PRIVILEGES;"
 fi
 
 # Clone RuoYi
 echo ""
 echo "→ Cloning RuoYi..."
-[ -d "$PROJECT_DIR" ] && { echo "   Removing old folder..."; rm -rf "$PROJECT_DIR"; }
-git clone --depth 1 "$GIT_REPO" "$PROJECT_DIR" || exit 1
-cd "$PROJECT_DIR" || exit 1
+if [ -d "$PROJECT_DIR" ]; then
+    echo "   Removing old folder..."
+    rm -rf "$PROJECT_DIR"
+fi
 
-# Update to Java 21
+git clone --depth 1 "$GIT_REPO" "$PROJECT_DIR" || { echo "${RED}Git clone failed${NC}"; exit 1; }
+
+cd "$PROJECT_DIR" || { echo "${RED}Cannot cd into $PROJECT_DIR${NC}"; exit 1; }
+
+# Update Java version
+echo "→ Setting Java version to 21..."
 sed -i 's|<java.version>.*</java.version>|<java.version>21</java.version>|g' pom.xml
 
-# Apply DB config if mysql mode
+# Apply DB config if mysql mode was used
 if [ "$COMMAND" = "mysql" ]; then
     CONFIG="ruoyi-admin/src/main/resources/application-druid.yml"
-    [ -f "$CONFIG" ] && {
-        sed -i "s|url:.*3306/ry|url: jdbc:mysql://localhost:3306/$DB_NAME|g" "$CONFIG"
+    if [ -f "$CONFIG" ]; then
+        sed -i "s|url: jdbc:mysql://localhost:3306/ry|url: jdbc:mysql://localhost:3306/$DB_NAME|g" "$CONFIG"
         sed -i "s|username: root|username: $DB_USER|g" "$CONFIG"
         sed -i "s|password:.*|password: $db_pass|g" "$CONFIG"
-        echo "   DB config updated"
-    }
-fi
+        echo "   DB config updated in $CONFIG"
+    else
+        echo "${YELLOW}Warning: $CONFIG not found — DB config not updated${NC}"
+    fi
 
-# Import SQL if mysql mode
-if [ "$COMMAND" = "mysql" ]; then
+    # Import latest ry_*.sql
     SQL_FILE=$(ls sql/ry_*.sql 2>/dev/null | sort -r | head -n 1)
-    [ -n "$SQL_FILE" ] && {
-        echo "→ Importing $SQL_FILE..."
-        mysql -u root -p"$mysql_root_pass" "$DB_NAME" < "$SQL_FILE" || echo "${YELLOW}SQL import warning${NC}"
-    }
+    if [ -n "$SQL_FILE" ]; then
+        echo "→ Importing latest SQL: $SQL_FILE"
+        mysql -u root -p"$mysql_root_pass" "$DB_NAME" < "$SQL_FILE" || echo "${YELLOW}SQL import warning — check manually${NC}"
+    else
+        echo "${YELLOW}No ry_*.sql found — skipping DB initialization${NC}"
+    fi
 fi
 
-# Optional cleanup
-echo "→ Removing optional modules..."
-rm -rf ruoyi-generator ruoyi-quartz 2>/dev/null || true
-
-# Build & run
+# Build & run (no module deletion)
 echo ""
-echo "→ Building..."
-mvn clean package -Dmaven.test.skip=true || exit 1
+echo "→ Building RuoYi project (this may take a few minutes)..."
+mvn clean package -Dmaven.test.skip=true || {
+    echo "${RED}Build failed${NC}"
+    echo "Try manually:"
+    echo "  cd $PROJECT_DIR"
+    echo "  mvn clean package -Dmaven.test.skip=true"
+    exit 1
+}
 
 echo ""
 echo "=============================================================="
-echo "  RuoYi starting → http://localhost:$PORT"
-echo "  Default: admin / admin123"
+echo "  RuoYi is starting..."
+echo "  → URL: http://localhost:$PORT"
+echo "  → Default login: admin / admin123"
+echo "  → Press Ctrl+C to stop"
 echo "=============================================================="
+echo ""
 
-"$JAVA_CMD" -jar ruoyi-admin/target/ruoyi-admin.jar
+# Run with SDKMAN Java preferred
+if [ -x "$JAVA_CMD" ]; then
+    "$JAVA_CMD" -jar ruoyi-admin/target/ruoyi-admin.jar
+else
+    java -jar ruoyi-admin/target/ruoyi-admin.jar
+fi
